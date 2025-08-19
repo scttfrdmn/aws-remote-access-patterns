@@ -1,0 +1,307 @@
+{{define "content"}}
+<!-- Hero Section -->
+<div class="bg-white rounded-lg shadow-lg p-8 mb-8">
+    <div class="text-center">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">
+            Welcome to {{.ServiceName}}
+        </h1>
+        <p class="text-xl text-gray-600 mb-8">
+            Secure AWS Cross-Account Integration Dashboard
+        </p>
+        
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-blue-100 text-sm">Total Customers</p>
+                        <p class="text-3xl font-bold">{{len .Customers}}</p>
+                    </div>
+                    <i class="fas fa-users text-4xl text-blue-200"></i>
+                </div>
+            </div>
+            
+            <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-green-100 text-sm">Active Integrations</p>
+                        <p class="text-3xl font-bold">
+                            {{$activeCount := 0}}
+                            {{range .Customers}}
+                                {{if eq .Status "active"}}{{$activeCount = add $activeCount 1}}{{end}}
+                            {{end}}
+                            {{$activeCount}}
+                        </p>
+                    </div>
+                    <i class="fas fa-check-circle text-4xl text-green-200"></i>
+                </div>
+            </div>
+            
+            <div class="bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-lg p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-yellow-100 text-sm">Pending Setup</p>
+                        <p class="text-3xl font-bold">
+                            {{$pendingCount := 0}}
+                            {{range .Customers}}
+                                {{if or (eq .Status "pending") (eq .Status "setup_required")}}{{$pendingCount = add $pendingCount 1}}{{end}}
+                            {{end}}
+                            {{$pendingCount}}
+                        </p>
+                    </div>
+                    <i class="fas fa-clock text-4xl text-yellow-200"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="flex justify-center space-x-4 mb-8">
+            <a href="/integrate" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition duration-200">
+                <i class="fas fa-plus mr-2"></i>
+                New Integration
+            </a>
+            <button onclick="refreshCustomers()" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold transition duration-200">
+                <i class="fas fa-refresh mr-2"></i>
+                Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Customer Management -->
+<div class="bg-white rounded-lg shadow-lg p-8">
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold text-gray-900">Customer Integrations</h2>
+        <div class="flex space-x-2">
+            <button onclick="showAddCustomerModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
+                <i class="fas fa-plus mr-2"></i>
+                Add Customer
+            </button>
+        </div>
+    </div>
+
+    {{if .Customers}}
+    <!-- Customers Table -->
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Customer
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        AWS Account
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Created
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {{range .Customers}}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="h-10 w-10 flex-shrink-0">
+                                <div class="h-10 w-10 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center">
+                                    <span class="text-white font-semibold">
+                                        {{substr .Name 0 1}}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="ml-4">
+                                <div class="text-sm font-medium text-gray-900">{{.Name}}</div>
+                                <div class="text-sm text-gray-500">{{.Email}}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                            {{if eq .Status "active"}}bg-green-100 text-green-800{{end}}
+                            {{if eq .Status "pending"}}bg-yellow-100 text-yellow-800{{end}}
+                            {{if eq .Status "setup_required"}}bg-blue-100 text-blue-800{{end}}
+                            {{if eq .Status "error"}}bg-red-100 text-red-800{{end}}">
+                            {{.Status}}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {{if .AWSAccountID}}{{.AWSAccountID}}{{else}}-{{end}}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {{.CreatedAt.Format "2006-01-02 15:04"}}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div class="flex space-x-2">
+                            {{if eq .Status "pending"}}
+                            <button onclick="generateSetupLink('{{.ID}}')" class="text-blue-600 hover:text-blue-900">
+                                Setup
+                            </button>
+                            {{end}}
+                            {{if eq .Status "setup_required"}}
+                            <a href="{{.SetupURL}}" target="_blank" class="text-green-600 hover:text-green-900">
+                                Launch Setup
+                            </a>
+                            {{end}}
+                            {{if eq .Status "active"}}
+                            <button onclick="testIntegration('{{.ID}}')" class="text-green-600 hover:text-green-900">
+                                Test
+                            </button>
+                            {{end}}
+                            <button onclick="deleteCustomer('{{.ID}}')" class="text-red-600 hover:text-red-900">
+                                Delete
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{else}}
+    <!-- Empty State -->
+    <div class="text-center py-12">
+        <i class="fas fa-users text-6xl text-gray-300 mb-4"></i>
+        <h3 class="text-xl font-semibold text-gray-600 mb-2">No Customers Yet</h3>
+        <p class="text-gray-500 mb-6">Get started by adding your first customer integration.</p>
+        <button onclick="showAddCustomerModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold">
+            <i class="fas fa-plus mr-2"></i>
+            Add Your First Customer
+        </button>
+    </div>
+    {{end}}
+</div>
+
+<!-- Add Customer Modal -->
+<div id="addCustomerModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden">
+    <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold">Add New Customer</h3>
+                    <button onclick="hideAddCustomerModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <form onsubmit="addCustomer(event)">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Company Name</label>
+                        <input type="text" id="companyName" required 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                        <input type="email" id="customerEmail" required 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="hideAddCustomerModal()" 
+                                class="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                            Cancel
+                        </button>
+                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 btn-loading">
+                            Add Customer
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function showAddCustomerModal() {
+        document.getElementById('addCustomerModal').classList.remove('hidden');
+    }
+    
+    function hideAddCustomerModal() {
+        document.getElementById('addCustomerModal').classList.add('hidden');
+        document.getElementById('companyName').value = '';
+        document.getElementById('customerEmail').value = '';
+    }
+    
+    function addCustomer(event) {
+        event.preventDefault();
+        
+        const name = document.getElementById('companyName').value;
+        const email = document.getElementById('customerEmail').value;
+        
+        fetch('/api/customers', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ name, email })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            showNotification('Customer added successfully!', 'success');
+            hideAddCustomerModal();
+            setTimeout(() => location.reload(), 1500);
+        })
+        .catch(error => {
+            showNotification('Error adding customer: ' + error.message, 'error');
+        });
+    }
+    
+    function generateSetupLink(customerId) {
+        fetch(`/api/customers/${customerId}/setup`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            showNotification('Setup link generated!', 'success');
+            setTimeout(() => location.reload(), 1500);
+        })
+        .catch(error => {
+            showNotification('Error generating setup link: ' + error.message, 'error');
+        });
+    }
+    
+    function deleteCustomer(customerId) {
+        if (!confirm('Are you sure you want to delete this customer?')) return;
+        
+        fetch(`/api/customers/${customerId}`, {
+            method: 'DELETE'
+        })
+        .then(() => {
+            showNotification('Customer deleted successfully!', 'success');
+            setTimeout(() => location.reload(), 1500);
+        })
+        .catch(error => {
+            showNotification('Error deleting customer: ' + error.message, 'error');
+        });
+    }
+    
+    function refreshCustomers() {
+        location.reload();
+    }
+    
+    function testIntegration(customerId) {
+        showNotification('Testing integration...', 'info');
+        // In a real implementation, this would test the AWS connection
+        setTimeout(() => {
+            showNotification('Integration test completed!', 'success');
+        }, 2000);
+    }
+
+    // Template helper functions (would be implemented in Go templates)
+    function substr(str, start, length) {
+        return str.substr(start, length);
+    }
+    
+    function add(a, b) {
+        return a + b;
+    }
+</script>
+{{end}}

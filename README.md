@@ -132,40 +132,47 @@ func main() {
 
 ```
 aws-remote-access-patterns/
-├── README.md
-├── LICENSE
-├── go.mod
-├── go.sum
-├── pkg/
-│   ├── crossaccount/          # Cross-account access pattern
+├── README.md                  # This file
+├── LICENSE                    # MIT License
+├── go.mod                     # Go module definition
+├── go.sum                     # Go module checksums
+│
+├── pkg/                       # Core library packages
+│   ├── crossaccount/          # Cross-account access pattern (SaaS services)
 │   │   ├── client.go          # Main client implementation
 │   │   ├── config.go          # Configuration structures
 │   │   ├── templates.go       # CloudFormation generation
 │   │   ├── validation.go      # Role validation
-│   │   └── storage.go         # Credential storage
-│   └── awsauth/               # External tool access pattern  
+│   │   └── storage.go         # Credential storage interfaces
+│   └── awsauth/               # External tool access pattern (CLI/desktop)
 │       ├── client.go          # Main authentication client
 │       ├── config.go          # Configuration structures
 │       ├── sso.go             # AWS SSO integration
-│       ├── setup.go           # Interactive setup
+│       ├── setup.go           # Interactive setup process
 │       └── credentials.go     # Credential management
-├── examples/
-│   ├── saas-service/          # Complete SaaS service example
-│   ├── cli-tool/              # Command-line tool example
-│   ├── desktop-app/           # Desktop application example
-│   ├── lambda-function/       # AWS Lambda example
-│   └── kubernetes-controller/ # Kubernetes controller example
-├── web/
-│   ├── templates/             # Setup UI templates
-│   └── static/                # Static assets
-├── docs/
-│   ├── cross-account.md       # Cross-account pattern guide
-│   ├── external-tool.md       # External tool pattern guide
-│   ├── security.md            # Security best practices
-│   └── deployment.md          # Deployment guidance
-└── scripts/
-    ├── setup.sh               # Project setup script
-    └── deploy.sh              # Deployment helpers
+│
+├── examples/                  # Complete working examples
+│   ├── simple-cli/            # Basic CLI tool (current)
+│   ├── simple-saas/           # Basic SaaS service (current)
+│   ├── saas-service/          # Complete SaaS service example (planned)
+│   ├── cli-tool/              # Advanced CLI tool example (planned)
+│   ├── desktop-app/           # Desktop application example (planned)
+│   └── lambda-function/       # AWS Lambda example (planned)
+│
+├── templates/                 # CloudFormation templates
+│   ├── cross-account-role.yaml # Production cross-account role template
+│   └── iam-user-policy.yaml   # IAM user policy template
+│
+├── docs/                      # Comprehensive documentation
+│   ├── cross-account.md       # Cross-account pattern complete guide
+│   ├── external-tool.md       # External tool pattern complete guide
+│   ├── security.md            # Security analysis and best practices
+│   ├── deployment.md          # Production deployment guide
+│   └── api-reference.md       # Complete API documentation
+│
+└── scripts/                   # Automation and setup scripts
+    ├── setup.sh               # Development environment setup
+    └── deploy.sh              # Production deployment script
 ```
 
 ## 🔐 Security Features
@@ -188,26 +195,28 @@ aws-remote-access-patterns/
 
 ## 📚 Documentation
 
-### Core Concepts
-- [Cross-Account Access Pattern](docs/cross-account.md) - For SaaS services accessing customer accounts
-- [External Tool Access Pattern](docs/external-tool.md) - For CLI tools and desktop applications
-- [Security Best Practices](docs/security.md) - Security considerations and recommendations
-- [Deployment Guide](docs/deployment.md) - Production deployment guidance
+### Core Concepts & Patterns
+- 🔗 [Cross-Account Access Pattern](docs/cross-account.md) - Complete guide for SaaS services accessing customer accounts
+- 🖥️ [External Tool Access Pattern](docs/external-tool.md) - Complete guide for CLI tools and desktop applications  
+- 🛡️ [Security Analysis](docs/security.md) - Security comparison: cross-account roles vs access keys
+- 🚀 [Production Deployment](docs/deployment.md) - Enterprise deployment with scaling, monitoring, and DR
+- 📖 [API Reference](docs/api-reference.md) - Complete API documentation with examples
 
-### Examples by Use Case
-- **SaaS Platform**: [examples/saas-service/](examples/saas-service/) - Complete web service with customer integration
-- **CLI Tool**: [examples/cli-tool/](examples/cli-tool/) - Command-line application with AWS access
-- **Desktop App**: [examples/desktop-app/](examples/desktop-app/) - GUI application with visual setup
-- **Lambda Function**: [examples/lambda-function/](examples/lambda-function/) - Serverless function with cross-account access
-- **CI/CD Runner**: [examples/ci-cd/](examples/ci-cd/) - Deployment automation with AWS access
+### Working Examples
+- **Basic CLI**: [examples/simple-cli/](examples/simple-cli/) - Simple command-line tool (current)
+- **Basic SaaS**: [examples/simple-saas/](examples/simple-saas/) - Simple web service (current)
+- **Advanced SaaS**: [examples/saas-service/](examples/saas-service/) - Complete web service with UI (planned)
+- **Advanced CLI**: [examples/cli-tool/](examples/cli-tool/) - Feature-rich CLI application (planned)
+- **Desktop App**: [examples/desktop-app/](examples/desktop-app/) - GUI application with visual setup (planned)
+- **Lambda Function**: [examples/lambda-function/](examples/lambda-function/) - Serverless cross-account access (planned)
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- Go 1.19 or later
-- AWS CLI configured with appropriate permissions
-- Docker (for running examples)
+- Go 1.21 or later
+- AWS CLI v2 configured with appropriate permissions
+- Basic understanding of AWS IAM roles and policies
 
 ### Installation
 
@@ -230,33 +239,33 @@ go mod download
 4. Try the examples:
 ```bash
 # Run the CLI tool example
-cd examples/cli-tool
+cd examples/simple-cli
 go run main.go --setup
 
 # Run the SaaS service example  
-cd examples/saas-service
+cd examples/simple-saas
 go run main.go
 ```
 
-## 🎨 Features
+## ✨ Features
 
-### Cross-Account Pattern Features
-- ✅ One-click CloudFormation deployment
-- ✅ Progressive disclosure UI
-- ✅ Two-phase permission strategy
-- ✅ External ID generation and validation
-- ✅ Role assumption with automatic retry
-- ✅ Comprehensive permission templates
-- ✅ Multi-region support
+### Cross-Account Pattern (SaaS Services)
+- 🚀 One-click CloudFormation deployment for customers
+- 🔒 Cryptographically secure external ID generation
+- 📋 Two-phase permission strategy (setup vs ongoing)
+- ⚡ Automatic credential refresh and caching
+- 🎯 Least-privilege permission templates
+- 🌍 Multi-region support
+- 📊 Comprehensive audit logging
 
-### External Tool Pattern Features  
-- ✅ AWS SSO integration with device flow
-- ✅ Multiple authentication fallbacks
-- ✅ Interactive setup wizard
-- ✅ Automatic credential caching
-- ✅ CloudFormation template generation
-- ✅ CI/CD environment optimization
-- ✅ Desktop application support
+### External Tool Pattern (CLI/Desktop)
+- 🔐 AWS SSO device flow integration
+- 🔄 Multiple authentication fallbacks (SSO → Profile → IAM User)
+- 🧙‍♂️ Interactive setup wizard with clear guidance
+- 💾 Secure credential caching with expiration
+- 🛠️ CI/CD environment optimization
+- 🖥️ Desktop application support with web UI
+- 📱 Cross-platform compatibility
 
 ## 🤝 Contributing
 
