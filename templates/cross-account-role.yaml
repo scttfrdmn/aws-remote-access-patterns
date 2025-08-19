@@ -1,0 +1,290 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cross-account IAM role for secure service integration'
+
+Parameters:
+  ExternalId:
+    Type: String
+    Description: 'Unique identifier provided by the service for additional security'
+    MinLength: 8
+    MaxLength: 64
+    NoEcho: true
+    
+  ServiceAccountId:
+    Type: String
+    Description: 'AWS Account ID of the service provider'
+    AllowedPattern: '[0-9]{12}'
+    ConstraintDescription: 'Must be a valid 12-digit AWS Account ID'
+    
+  RoleName:
+    Type: String
+    Description: 'Name for the IAM role'
+    Default: 'ServiceIntegration-CrossAccountRole'
+    
+  SetupPhase:
+    Type: String
+    Description: 'Include setup permissions? (Remove after initial setup for security)'
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    
+  ServiceName:
+    Type: String
+    Description: 'Name of the service being integrated'
+    Default: 'ServiceIntegration'
+
+Conditions:
+  IncludeSetupPermissions: !Equals [!Ref SetupPhase, 'true']
+
+Resources:
+  # Main Cross-Account Role
+  CrossAccountRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: !Sub 'Allows ${ServiceAccountId} to manage resources in this account for ${ServiceName}'
+      Path: !Sub '/${ServiceName}/'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${ServiceAccountId}:root'
+            Action: 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                'sts:ExternalId': !Ref ExternalId
+              Bool:
+                'aws:MultiFactorAuthPresent': 'false'  # Allow programmatic access
+      ManagedPolicyArns:
+        - !Ref OngoingOperationsPolicy
+        - !If 
+          - IncludeSetupPermissions
+          - !Ref SetupPolicy  
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: 'CreatedBy'
+          Value: !Ref ServiceName
+        - Key: 'Purpose' 
+          Value: 'CrossAccountIntegration'
+        - Key: 'SetupPhase'
+          Value: !Ref SetupPhase
+
+  # Ongoing Operations Policy (Always Active)
+  OngoingOperationsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${RoleName}-OngoingOperations'
+      Description: 'Minimal permissions for day-to-day operations'
+      Path: !Sub '/${ServiceName}/'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Basic AWS Service Access
+          - Sid: 'BasicServiceAccess'
+            Effect: Allow
+            Action:
+              - 'sts:GetCallerIdentity'
+              - 'sts:GetAccessKeyInfo'
+            Resource: '*'
+            
+          # EC2 Instance Management (Read-Only + Basic Operations)
+          - Sid: 'EC2InstanceManagement'
+            Effect: Allow
+            Action:
+              - 'ec2:DescribeInstances'
+              - 'ec2:DescribeInstanceTypes'
+              - 'ec2:DescribeInstanceAttribute'
+              - 'ec2:DescribeImages'
+              - 'ec2:DescribeSnapshots'
+              - 'ec2:DescribeVolumes'
+              - 'ec2:DescribeInstanceStatus'
+              - 'ec2:RunInstances'
+              - 'ec2:TerminateInstances'
+              - 'ec2:StopInstances'
+              - 'ec2:StartInstances'
+              - 'ec2:RebootInstances'
+            Resource: '*'
+            Condition:
+              StringLike:
+                'ec2:ResourceTag/CreatedBy': !Sub '${ServiceName}*'
+            
+          # Security Groups (Limited)
+          - Sid: 'SecurityGroupManagement'
+            Effect: Allow
+            Action:
+              - 'ec2:DescribeSecurityGroups'
+              - 'ec2:DescribeSecurityGroupRules'
+              - 'ec2:AuthorizeSecurityGroupIngress'
+              - 'ec2:AuthorizeSecurityGroupEgress'
+              - 'ec2:RevokeSecurityGroupIngress'
+              - 'ec2:RevokeSecurityGroupEgress'
+            Resource: '*'
+            Condition:
+              StringLike:
+                'ec2:ResourceTag/CreatedBy': !Sub '${ServiceName}*'
+            
+          # S3 Data Access (Scoped to service buckets)
+          - Sid: 'S3DataAccess'
+            Effect: Allow
+            Action:
+              - 's3:GetObject'
+              - 's3:PutObject'
+              - 's3:DeleteObject'
+              - 's3:GetObjectVersion'
+              - 's3:ListBucket'
+              - 's3:GetBucketLocation'
+            Resource: 
+              - !Sub 'arn:aws:s3:::${ServiceName}-*'
+              - !Sub 'arn:aws:s3:::${ServiceName}-*/*'
+              - 'arn:aws:s3:::customer-data-*'
+              - 'arn:aws:s3:::customer-data-*/*'
+            
+          # CloudWatch Logs
+          - Sid: 'CloudWatchLogs'
+            Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+              - 'logs:CreateLogStream'  
+              - 'logs:PutLogEvents'
+              - 'logs:DescribeLogGroups'
+              - 'logs:DescribeLogStreams'
+              - 'logs:GetLogEvents'
+            Resource: 
+              - !Sub 'arn:aws:logs:*:${AWS::AccountId}:log-group:/${ServiceName}/*'
+              - !Sub 'arn:aws:logs:*:${AWS::AccountId}:log-group:/aws/lambda/${ServiceName}*'
+            
+          # Resource Tagging
+          - Sid: 'ResourceTagging'
+            Effect: Allow  
+            Action:
+              - 'ec2:CreateTags'
+              - 'ec2:DescribeTags'
+            Resource: '*'
+            Condition:
+              StringLike:
+                'ec2:ResourceTag/CreatedBy': !Sub '${ServiceName}*'
+
+  # Setup Policy (Temporary - Remove After Setup)  
+  SetupPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Condition: IncludeSetupPermissions
+    Properties:
+      ManagedPolicyName: !Sub '${RoleName}-Setup'
+      Description: 'Temporary setup permissions - REMOVE after initial setup'  
+      Path: !Sub '/${ServiceName}/'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # VPC Management for Initial Setup
+          - Sid: 'VPCSetup'
+            Effect: Allow
+            Action:
+              - 'ec2:CreateVpc'
+              - 'ec2:DescribeVpcs'
+              - 'ec2:ModifyVpcAttribute'
+              - 'ec2:CreateSubnet'
+              - 'ec2:DescribeSubnets'
+              - 'ec2:ModifySubnetAttribute'
+              - 'ec2:CreateInternetGateway'
+              - 'ec2:DescribeInternetGateways'
+              - 'ec2:AttachInternetGateway'
+              - 'ec2:DetachInternetGateway'
+              - 'ec2:CreateRouteTable'
+              - 'ec2:DescribeRouteTables'
+              - 'ec2:CreateRoute'
+              - 'ec2:AssociateRouteTable'
+              - 'ec2:DisassociateRouteTable'
+            Resource: '*'
+            
+          # Security Group Creation
+          - Sid: 'SecurityGroupSetup'
+            Effect: Allow
+            Action:
+              - 'ec2:CreateSecurityGroup'
+              - 'ec2:DeleteSecurityGroup'
+            Resource: '*'
+            
+          # S3 Bucket Setup
+          - Sid: 'S3BucketSetup'
+            Effect: Allow
+            Action:
+              - 's3:CreateBucket'
+              - 's3:DeleteBucket'
+              - 's3:PutBucketPolicy'
+              - 's3:DeleteBucketPolicy'
+              - 's3:PutBucketVersioning'
+              - 's3:PutBucketEncryption'
+              - 's3:PutBucketPublicAccessBlock'
+            Resource: 
+              - !Sub 'arn:aws:s3:::${ServiceName}-*'
+              - 'arn:aws:s3:::customer-data-*'
+            
+          # IAM for Instance Profiles
+          - Sid: 'InstanceProfileSetup'
+            Effect: Allow
+            Action:
+              - 'iam:CreateRole'
+              - 'iam:DeleteRole'
+              - 'iam:CreateInstanceProfile'
+              - 'iam:DeleteInstanceProfile'
+              - 'iam:AddRoleToInstanceProfile'
+              - 'iam:RemoveRoleFromInstanceProfile'
+              - 'iam:PassRole'
+              - 'iam:AttachRolePolicy'
+              - 'iam:DetachRolePolicy'
+              - 'iam:PutRolePolicy'
+              - 'iam:DeleteRolePolicy'
+            Resource: 
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ServiceName}/*'
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:instance-profile/${ServiceName}/*'
+              
+          # Key Management for Setup
+          - Sid: 'KeyManagementSetup'
+            Effect: Allow
+            Action:
+              - 'kms:CreateKey'
+              - 'kms:CreateAlias'
+              - 'kms:DescribeKey'
+              - 'kms:ListKeys'
+              - 'kms:PutKeyPolicy'
+            Resource: '*'
+
+Outputs:
+  RoleArn:
+    Description: 'ARN of the created cross-account role'
+    Value: !GetAtt CrossAccountRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-RoleArn'
+      
+  ExternalId:
+    Description: 'External ID used for additional security' 
+    Value: !Ref ExternalId
+    
+  RoleName:
+    Description: 'Name of the created role'
+    Value: !Ref RoleName
+    
+  SetupComplete:
+    Description: 'Next steps'
+    Value: !If
+      - IncludeSetupPermissions
+      - 'Setup permissions included. REMEMBER to update stack with SetupPhase=false after initial setup.'
+      - 'Role configured for ongoing operations only.'
+      
+  IntegrationInstructions:
+    Description: 'Integration details for the service'
+    Value: !Sub |
+      1. Copy this Role ARN: ${CrossAccountRole.Arn}
+      2. Copy this External ID: ${ExternalId}  
+      3. Provide both values to ${ServiceName}
+      4. Test the integration
+      5. If setup permissions were included, update this stack with SetupPhase=false
+      
+  SecurityRecommendations:
+    Description: 'Security best practices'
+    Value: !Sub |
+      - Monitor role usage in CloudTrail
+      - Remove setup permissions after initial configuration
+      - Review and audit permissions regularly
+      - Consider adding IP restrictions if needed
+      - Enable CloudTrail logging for this account

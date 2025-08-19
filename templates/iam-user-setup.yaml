@@ -1,0 +1,350 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM User for external tool with minimal required permissions'
+
+Parameters:
+  ToolName:
+    Type: String
+    Description: 'Name of the external tool'
+    Default: 'ExternalTool'
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9-]*$'
+    ConstraintDescription: 'Must start with a letter and contain only letters, numbers, and hyphens'
+    
+  PermissionLevel:
+    Type: String
+    Description: 'Level of permissions to grant'
+    Default: 'Basic'
+    AllowedValues: 
+      - 'Basic'
+      - 'EC2Management'
+      - 'S3DataAccess'
+      - 'FullService'
+      
+  ResourcePrefix:
+    Type: String
+    Description: 'Prefix for resources the tool can access (leave empty for all resources)'
+    Default: ''
+
+Conditions:
+  HasResourcePrefix: !Not [!Equals [!Ref ResourcePrefix, '']]
+  BasicPermissions: !Equals [!Ref PermissionLevel, 'Basic']
+  EC2Permissions: !Or
+    - !Equals [!Ref PermissionLevel, 'EC2Management']
+    - !Equals [!Ref PermissionLevel, 'FullService']
+  S3Permissions: !Or
+    - !Equals [!Ref PermissionLevel, 'S3DataAccess']
+    - !Equals [!Ref PermissionLevel, 'FullService']
+  FullServicePermissions: !Equals [!Ref PermissionLevel, 'FullService']
+
+Resources:
+  # IAM User
+  ExternalToolUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Sub '${ToolName}-user-${AWS::AccountId}'
+      Path: '/external-tools/'
+      Tags:
+        - Key: 'CreatedBy'
+          Value: !Ref ToolName
+        - Key: 'Purpose'
+          Value: 'ExternalToolAccess'
+        - Key: 'PermissionLevel'
+          Value: !Ref PermissionLevel
+      
+  # Access Key
+  ExternalToolAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref ExternalToolUser
+      
+  # Basic Permissions Policy (Always Applied)
+  BasicPermissionsPolicy:
+    Type: AWS::IAM::UserPolicy
+    Properties:
+      UserName: !Ref ExternalToolUser
+      PolicyName: !Sub '${ToolName}-BasicPermissions'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Basic AWS Service Access
+          - Sid: 'BasicAWSAccess'
+            Effect: Allow
+            Action:
+              - 'sts:GetCallerIdentity'
+              - 'sts:GetAccessKeyInfo'
+              - 'iam:GetUser'
+              - 'iam:ListAccessKeys'
+              - 'iam:GetAccessKeyLastUsed'
+            Resource: 
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:user/external-tools/${ToolName}-user-${AWS::AccountId}'
+              
+          # CloudWatch Logs (Basic)
+          - Sid: 'BasicCloudWatchLogs'
+            Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+              - 'logs:DescribeLogGroups'
+              - 'logs:DescribeLogStreams'
+            Resource: !Sub 'arn:aws:logs:*:${AWS::AccountId}:log-group:/external-tools/${ToolName}*'
+
+  # EC2 Management Policy (Conditional)
+  EC2ManagementPolicy:
+    Type: AWS::IAM::UserPolicy
+    Condition: EC2Permissions
+    Properties:
+      UserName: !Ref ExternalToolUser
+      PolicyName: !Sub '${ToolName}-EC2Management'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # EC2 Instance Management
+          - Sid: 'EC2InstanceManagement'
+            Effect: Allow
+            Action:
+              - 'ec2:DescribeInstances'
+              - 'ec2:DescribeInstanceTypes'
+              - 'ec2:DescribeInstanceStatus'
+              - 'ec2:DescribeInstanceAttribute'
+              - 'ec2:DescribeImages'
+              - 'ec2:DescribeSnapshots'
+              - 'ec2:DescribeVolumes'
+              - 'ec2:DescribeKeyPairs'
+              - 'ec2:RunInstances'
+              - 'ec2:TerminateInstances'
+              - 'ec2:StopInstances'
+              - 'ec2:StartInstances'
+              - 'ec2:RebootInstances'
+              - 'ec2:ModifyInstanceAttribute'
+            Resource: '*'
+            Condition: !If
+              - HasResourcePrefix
+              - StringLike:
+                  'ec2:ResourceTag/Name': !Sub '${ResourcePrefix}*'
+              - !Ref AWS::NoValue
+            
+          # Security Groups
+          - Sid: 'SecurityGroupManagement'
+            Effect: Allow
+            Action:
+              - 'ec2:DescribeSecurityGroups'
+              - 'ec2:DescribeSecurityGroupRules'
+              - 'ec2:CreateSecurityGroup'
+              - 'ec2:DeleteSecurityGroup'
+              - 'ec2:AuthorizeSecurityGroupIngress'
+              - 'ec2:AuthorizeSecurityGroupEgress'
+              - 'ec2:RevokeSecurityGroupIngress'
+              - 'ec2:RevokeSecurityGroupEgress'
+            Resource: '*'
+            Condition: !If
+              - HasResourcePrefix
+              - StringLike:
+                  'ec2:ResourceTag/CreatedBy': !Sub '${ToolName}*'
+              - !Ref AWS::NoValue
+            
+          # VPC Information
+          - Sid: 'VPCInformation'
+            Effect: Allow
+            Action:
+              - 'ec2:DescribeVpcs'
+              - 'ec2:DescribeSubnets'
+              - 'ec2:DescribeRouteTables'
+              - 'ec2:DescribeInternetGateways'
+              - 'ec2:DescribeAvailabilityZones'
+              - 'ec2:DescribeRegions'
+            Resource: '*'
+            
+          # Tagging
+          - Sid: 'EC2Tagging'
+            Effect: Allow
+            Action:
+              - 'ec2:CreateTags'
+              - 'ec2:DescribeTags'
+            Resource: '*'
+
+  # S3 Data Access Policy (Conditional)
+  S3DataAccessPolicy:
+    Type: AWS::IAM::UserPolicy
+    Condition: S3Permissions
+    Properties:
+      UserName: !Ref ExternalToolUser
+      PolicyName: !Sub '${ToolName}-S3DataAccess'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # S3 Bucket Operations
+          - Sid: 'S3BucketAccess'
+            Effect: Allow
+            Action:
+              - 's3:ListBucket'
+              - 's3:GetBucketLocation'
+              - 's3:GetBucketVersioning'
+              - 's3:ListBucketVersions'
+              - 's3:GetBucketPolicy'
+            Resource: !If
+              - HasResourcePrefix
+              - !Sub 'arn:aws:s3:::${ResourcePrefix}*'
+              - 'arn:aws:s3:::*'
+              
+          # S3 Object Operations
+          - Sid: 'S3ObjectAccess'
+            Effect: Allow
+            Action:
+              - 's3:GetObject'
+              - 's3:GetObjectVersion'
+              - 's3:PutObject'
+              - 's3:DeleteObject'
+              - 's3:DeleteObjectVersion'
+              - 's3:GetObjectAcl'
+              - 's3:PutObjectAcl'
+            Resource: !If
+              - HasResourcePrefix
+              - !Sub 'arn:aws:s3:::${ResourcePrefix}*/*'
+              - 'arn:aws:s3:::*/*'
+              
+          # S3 Bucket Management (Full Service Only)
+          - !If
+            - FullServicePermissions
+            - Sid: 'S3BucketManagement'
+              Effect: Allow
+              Action:
+                - 's3:CreateBucket'
+                - 's3:DeleteBucket'
+                - 's3:PutBucketPolicy'
+                - 's3:DeleteBucketPolicy'
+                - 's3:PutBucketVersioning'
+                - 's3:PutBucketEncryption'
+                - 's3:PutBucketPublicAccessBlock'
+              Resource: !If
+                - HasResourcePrefix
+                - !Sub 'arn:aws:s3:::${ResourcePrefix}*'
+                - 'arn:aws:s3:::*'
+            - !Ref AWS::NoValue
+
+  # Full Service Policy (Maximum Permissions)
+  FullServicePolicy:
+    Type: AWS::IAM::UserPolicy
+    Condition: FullServicePermissions
+    Properties:
+      UserName: !Ref ExternalToolUser
+      PolicyName: !Sub '${ToolName}-FullServiceAccess'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # CloudFormation (for infrastructure management)
+          - Sid: 'CloudFormationAccess'
+            Effect: Allow
+            Action:
+              - 'cloudformation:CreateStack'
+              - 'cloudformation:DeleteStack'
+              - 'cloudformation:UpdateStack'
+              - 'cloudformation:DescribeStacks'
+              - 'cloudformation:DescribeStackEvents'
+              - 'cloudformation:DescribeStackResources'
+              - 'cloudformation:GetTemplate'
+              - 'cloudformation:ListStacks'
+              - 'cloudformation:ValidateTemplate'
+            Resource: !Sub 'arn:aws:cloudformation:*:${AWS::AccountId}:stack/${ToolName}-*'
+            
+          # IAM (Limited to tool-specific resources)
+          - Sid: 'IAMManagement'
+            Effect: Allow
+            Action:
+              - 'iam:CreateRole'
+              - 'iam:DeleteRole'
+              - 'iam:GetRole'
+              - 'iam:CreatePolicy'
+              - 'iam:DeletePolicy'
+              - 'iam:GetPolicy'
+              - 'iam:AttachRolePolicy'
+              - 'iam:DetachRolePolicy'
+              - 'iam:PutRolePolicy'
+              - 'iam:DeleteRolePolicy'
+              - 'iam:CreateInstanceProfile'
+              - 'iam:DeleteInstanceProfile'
+              - 'iam:AddRoleToInstanceProfile'
+              - 'iam:RemoveRoleFromInstanceProfile'
+              - 'iam:PassRole'
+            Resource: 
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ToolName}-*'
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${ToolName}-*'
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:instance-profile/${ToolName}-*'
+              
+          # CloudWatch Monitoring
+          - Sid: 'CloudWatchAccess'
+            Effect: Allow
+            Action:
+              - 'cloudwatch:GetMetricStatistics'
+              - 'cloudwatch:GetMetricData'
+              - 'cloudwatch:ListMetrics'
+              - 'cloudwatch:PutMetricData'
+              - 'cloudwatch:PutMetricAlarm'
+              - 'cloudwatch:DescribeAlarms'
+              - 'logs:GetLogEvents'
+              - 'logs:FilterLogEvents'
+            Resource: '*'
+            
+          # Systems Manager (for configuration)
+          - Sid: 'SSMParameterAccess'
+            Effect: Allow
+            Action:
+              - 'ssm:GetParameter'
+              - 'ssm:GetParameters'
+              - 'ssm:PutParameter'
+              - 'ssm:DeleteParameter'
+              - 'ssm:GetParametersByPath'
+            Resource: !Sub 'arn:aws:ssm:*:${AWS::AccountId}:parameter/${ToolName}/*'
+
+  # Password Policy Warning (Informational)
+  PasswordPolicyReminder:
+    Type: AWS::CloudFormation::WaitConditionHandle
+    Metadata:
+      Description: 'This resource serves as a reminder about security best practices'
+
+Outputs:
+  AccessKeyId:
+    Description: 'Access Key ID for the external tool'
+    Value: !Ref ExternalToolAccessKey
+    
+  SecretAccessKey:
+    Description: 'Secret Access Key (store securely and never log this value!)'
+    Value: !GetAtt ExternalToolAccessKey.SecretAccessKey
+    NoEcho: true
+    
+  UserName:
+    Description: 'IAM username created for the tool'
+    Value: !Ref ExternalToolUser
+    
+  UserArn:
+    Description: 'ARN of the created IAM user'
+    Value: !GetAtt ExternalToolUser.Arn
+    
+  PermissionLevel:
+    Description: 'Permission level granted to the user'
+    Value: !Ref PermissionLevel
+    
+  SetupInstructions:
+    Description: 'How to use these credentials'
+    Value: !Sub |
+      1. Copy the Access Key ID: ${ExternalToolAccessKey}
+      2. Copy the Secret Access Key from the SecretAccessKey output (handle securely!)
+      3. Configure your tool with these credentials
+      4. Test the integration
+      5. Monitor usage in CloudTrail
+      
+  SecurityRecommendations:
+    Description: 'Security best practices'
+    Value: |
+      - Store credentials securely (use environment variables, not hardcoded values)
+      - Enable MFA on your AWS account
+      - Rotate these access keys regularly (every 90 days recommended)
+      - Monitor usage in CloudTrail and set up alerts for unusual activity
+      - Use the minimum permission level required for your use case
+      - Consider migrating to IAM roles with temporary credentials when possible
+      
+  ResourceAccess:
+    Description: 'Resources this user can access'
+    Value: !If
+      - HasResourcePrefix
+      - !Sub 'Resources prefixed with: ${ResourcePrefix}'
+      - 'All resources (based on permission level)'
