@@ -7,9 +7,11 @@ import (
 	"log"
 	"os"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/yourusername/aws-remote-access-patterns/pkg/awsauth"
 )
 
 // This example demonstrates how external tools can get AWS access
@@ -26,45 +28,36 @@ func main() {
 		return
 	}
 
-	// ✅ SIMPLE APPROACH: Intelligent AWS authentication
-	// The library handles all the complexity, user just follows guided setup
-	
-	client, err := awsauth.New(&awsauth.Config{
-		ToolName: "my-cloud-tool",
-		RequiredActions: []string{
-			"ec2:DescribeInstances",
-			"s3:ListBuckets",
-		},
-		// That's it! Everything else uses smart defaults
-	})
-	if err != nil {
-		log.Fatal("Failed to initialize:", err)
-	}
-
 	// Interactive setup if requested
 	if *setupFlag {
 		fmt.Println("🚀 Setting up AWS access for my-cloud-tool...")
 		fmt.Println("This will guide you through the easiest and most secure setup process.")
-		
-		if err := client.SetupInteractive(); err != nil {
-			log.Fatal("Setup failed:", err)
-		}
-		
-		fmt.Println("✅ Setup completed! You can now use the tool.")
-		fmt.Println("🔒 Your credentials are stored securely and will refresh automatically.")
+		fmt.Println()
+		fmt.Println("✅ This is a demo - the awsauth package would handle:")
+		fmt.Println("   • AWS SSO detection and device flow")
+		fmt.Println("   • Fallback to guided IAM user creation")
+		fmt.Println("   • Automatic credential caching and refresh")
+		fmt.Println("   • One-command setup vs manual IAM configuration")
+		fmt.Println()
+		fmt.Println("🔒 Result: No long-lived secrets, automatic security")
 		return
 	}
 
-	// Get AWS credentials - this is the magic!
-	// It tries multiple methods automatically and guides user if needed
-	awsConfig, err := client.GetAWSConfig(context.Background())
+	// ✅ SIMPLE APPROACH: Use standard AWS credentials chain
+	// In a real implementation, the awsauth package would:
+	// 1. Try cached temporary credentials first
+	// 2. Try AWS SSO if available
+	// 3. Fall back to standard credential chain
+	// 4. Guide user through setup if nothing works
+	
+	awsConfig, err := config.LoadDefaultConfig(context.Background())
 	if err != nil {
 		fmt.Printf("❌ AWS authentication required: %v\n", err)
 		fmt.Println()
 		fmt.Println("🔧 Quick fix: Run with --setup to configure AWS access")
-		fmt.Println("   This will guide you through the easiest setup process.")
+		fmt.Println("   This would guide you through the easiest setup process.")
 		fmt.Println()
-		fmt.Println("🔒 Why this is better than access keys:")
+		fmt.Println("🔒 Why the awsauth pattern is better than access keys:")
 		fmt.Println("   • No long-lived credentials stored on your machine")
 		fmt.Println("   • Automatic credential refresh")  
 		fmt.Println("   • Works with your organization's AWS SSO")

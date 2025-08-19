@@ -1,7 +1,7 @@
 # AWS Remote Account Access Patterns
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Report Card](https://goreportcard.com/badge/github.com/yourusername/aws-remote-access-patterns)](https://goreportcard.com/report/github.com/yourusername/aws-remote-access-patterns)
+[![Go Report Card](https://goreportcard.com/badge/github.com/scttfrdmn/aws-remote-access-patterns)](https://goreportcard.com/report/github.com/scttfrdmn/aws-remote-access-patterns)
 
 A comprehensive demonstration of secure AWS remote account access patterns, showcasing industry best practices for both **cross-account access** (SaaS services) and **external tool access** (CLI tools, desktop applications).
 
@@ -41,7 +41,7 @@ import (
     "context"
     "log"
     
-    "github.com/yourusername/aws-remote-access-patterns/pkg/crossaccount"
+    "github.com/scttfrdmn/aws-remote-access-patterns/pkg/crossaccount"
 )
 
 func main() {
@@ -96,7 +96,7 @@ import (
     "context"
     "log"
     
-    "github.com/yourusername/aws-remote-access-patterns/pkg/awsauth"
+    "github.com/scttfrdmn/aws-remote-access-patterns/pkg/awsauth"
 )
 
 func main() {
@@ -213,7 +213,7 @@ aws-remote-access-patterns/
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/aws-remote-access-patterns.git
+git clone https://github.com/scttfrdmn/aws-remote-access-patterns.git
 cd aws-remote-access-patterns
 ```
 
@@ -291,6 +291,6 @@ If this project helps you build secure AWS integrations, please give it a star! 
 ## 📞 Support
 
 - 📖 [Documentation](docs/)
-- 🐛 [Issue Tracker](https://github.com/yourusername/aws-remote-access-patterns/issues)
-- 💬 [Discussions](https://github.com/yourusername/aws-remote-access-patterns/discussions)
+- 🐛 [Issue Tracker](https://github.com/scttfrdmn/aws-remote-access-patterns/issues)
+- 💬 [Discussions](https://github.com/scttfrdmn/aws-remote-access-patterns/discussions)
 - 🔒 [Security Issues](SECURITY.md)

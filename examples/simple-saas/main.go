@@ -10,7 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gin-gonic/gin"
-	"github.com/yourusername/aws-remote-access-patterns/pkg/crossaccount"
+	"github.com/scttfrdmn/aws-remote-access-patterns/pkg/crossaccount"
 )
 
 // This example shows how much simpler and more secure cross-account roles are

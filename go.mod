@@ -1,4 +1,4 @@
-module github.com/yourusername/aws-remote-access-patterns
+module github.com/scttfrdmn/aws-remote-access-patterns
 
 go 1.21
 
