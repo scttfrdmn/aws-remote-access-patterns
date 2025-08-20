@@ -1,0 +1,327 @@
+# AWS SAM Template for Lambda Function Example
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  AWS Remote Access Patterns - Lambda Function Example
+  
+  Demonstrates secure cross-account role assumption in serverless environments
+  with proper IAM permissions and CloudFormation deployment.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues: [DEBUG, INFO, WARN, ERROR]
+    Description: Lambda function log level
+
+  CrossAccountRoleArn:
+    Type: String
+    Default: ""
+    Description: ARN of the cross-account role to assume (optional)
+
+  ExternalId:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: External ID for cross-account role assumption (optional)
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: go1.x
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: !Ref LogLevel
+        CROSS_ACCOUNT_ROLE_ARN: !Ref CrossAccountRoleArn
+        EXTERNAL_ID: !Ref ExternalId
+    Tags:
+      Project: aws-remote-access-patterns
+      Component: lambda-function
+      Environment: !Ref Environment
+
+Resources:
+  # Lambda Function
+  RemoteAccessFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${Environment}-remote-access-function"
+      CodeUri: .
+      Handler: main
+      Description: Demonstrates secure cross-account role assumption patterns
+      
+      # API Gateway Event
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RemoteAccessApi
+            Path: /{proxy+}
+            Method: ANY
+      
+      # IAM Role and Policies
+      Role: !GetAtt LambdaExecutionRole.Arn
+      
+      # Environment-specific configuration
+      Environment:
+        Variables:
+          FUNCTION_NAME: !Sub "${Environment}-remote-access-function"
+          API_GATEWAY_URL: !Sub "https://${RemoteAccessApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+      
+      # Dead Letter Queue
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt DeadLetterQueue.Arn
+      
+      # Tracing and Monitoring
+      Tracing: Active
+      
+  # API Gateway
+  RemoteAccessApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "${Environment}-remote-access-api"
+      StageName: !Ref Environment
+      Description: API for remote access pattern demonstrations
+      
+      # CORS Configuration
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+      
+      # API Gateway Logging
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: >
+          {
+            "requestId": "$context.requestId",
+            "ip": "$context.identity.sourceIp",
+            "caller": "$context.identity.caller",
+            "user": "$context.identity.user",
+            "requestTime": "$context.requestTime",
+            "httpMethod": "$context.httpMethod",
+            "resourcePath": "$context.resourcePath",
+            "status": "$context.status",
+            "protocol": "$context.protocol",
+            "responseLength": "$context.responseLength",
+            "responseTime": "$context.responseTime"
+          }
+      
+      # Throttling
+      ThrottleSettings:
+        RateLimit: 100
+        BurstLimit: 200
+      
+      Tags:
+        Project: aws-remote-access-patterns
+        Component: api-gateway
+        Environment: !Ref Environment
+
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Environment}-remote-access-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      
+      Policies:
+        - PolicyName: CrossAccountAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Allow assuming cross-account roles
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                  - sts:GetCallerIdentity
+                Resource: 
+                  - !Sub "arn:aws:iam::*:role/*-RemoteAccessRole-*"
+                  - !Ref CrossAccountRoleArn
+                Condition:
+                  StringEquals:
+                    "sts:ExternalId": !Ref ExternalId
+              
+              # Allow accessing S3 (with assumed role)
+              - Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: "*"
+              
+              # Allow SQS (for DLQ)
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt DeadLetterQueue.Arn
+      
+      Tags:
+        - Key: Project
+          Value: aws-remote-access-patterns
+        - Key: Component
+          Value: lambda-execution-role
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Dead Letter Queue
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${Environment}-remote-access-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeoutSeconds: 60
+      Tags:
+        - Key: Project
+          Value: aws-remote-access-patterns
+        - Key: Component
+          Value: dead-letter-queue
+        - Key: Environment
+          Value: !Ref Environment
+
+  # CloudWatch Log Groups
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Environment}-remote-access-function"
+      RetentionInDays: 7
+      Tags:
+        - Key: Project
+          Value: aws-remote-access-patterns
+        - Key: Component
+          Value: lambda-logs
+        - Key: Environment
+          Value: !Ref Environment
+
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/apigateway/${Environment}-remote-access-api"
+      RetentionInDays: 7
+      Tags:
+        - Key: Project
+          Value: aws-remote-access-patterns
+        - Key: Component
+          Value: api-gateway-logs
+        - Key: Environment
+          Value: !Ref Environment
+
+  # CloudWatch Alarms
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${Environment}-remote-access-lambda-errors"
+      AlarmDescription: Alert when Lambda function has errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref RemoteAccessFunction
+      TreatMissingData: notBreaching
+
+  LambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${Environment}-remote-access-lambda-duration"
+      AlarmDescription: Alert when Lambda function duration is high
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 25000  # 25 seconds
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref RemoteAccessFunction
+      TreatMissingData: notBreaching
+
+Outputs:
+  # API Gateway
+  ApiGatewayUrl:
+    Description: URL of the API Gateway endpoint
+    Value: !Sub "https://${RemoteAccessApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+    Export:
+      Name: !Sub "${Environment}-remote-access-api-url"
+
+  ApiGatewayId:
+    Description: API Gateway ID
+    Value: !Ref RemoteAccessApi
+    Export:
+      Name: !Sub "${Environment}-remote-access-api-id"
+
+  # Lambda Function
+  LambdaFunctionName:
+    Description: Lambda function name
+    Value: !Ref RemoteAccessFunction
+    Export:
+      Name: !Sub "${Environment}-remote-access-function-name"
+
+  LambdaFunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt RemoteAccessFunction.Arn
+    Export:
+      Name: !Sub "${Environment}-remote-access-function-arn"
+
+  # IAM Role
+  LambdaExecutionRoleArn:
+    Description: Lambda execution role ARN
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub "${Environment}-remote-access-lambda-role-arn"
+
+  # CloudWatch
+  LambdaLogGroup:
+    Description: Lambda function log group
+    Value: !Ref LambdaLogGroup
+    Export:
+      Name: !Sub "${Environment}-remote-access-lambda-log-group"
+
+  # Example Usage
+  ExampleCurlCommand:
+    Description: Example curl command to test the API
+    Value: !Sub |
+      # Health check
+      curl -X POST "${RemoteAccessApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/" \
+        -H "Content-Type: application/json" \
+        -d '{"action": "health_check"}'
+      
+      # Get caller identity
+      curl -X POST "${RemoteAccessApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/" \
+        -H "Content-Type: application/json" \
+        -d '{"action": "get_caller_identity"}'
+      
+      # Assume cross-account role (if configured)
+      curl -X POST "${RemoteAccessApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/" \
+        -H "Content-Type: application/json" \
+        -d '{
+          "action": "assume_role",
+          "target_role": "arn:aws:iam::ACCOUNT-ID:role/CrossAccountRole",
+          "external_id": "your-external-id"
+        }'

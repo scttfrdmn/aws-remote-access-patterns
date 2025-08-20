@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS Desktop App</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/css/app.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+    <!-- Navigation -->
+    <nav class="bg-white dark:bg-gray-800 shadow-lg border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-cloud text-2xl text-blue-600 mr-3"></i>
+                        <span class="text-xl font-bold text-gray-900 dark:text-white">AWS Desktop App</span>
+                    </div>
+                    <div class="hidden md:block ml-10">
+                        <div class="flex items-baseline space-x-4">
+                            <a href="#" class="nav-link active" data-page="dashboard">
+                                <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
+                            </a>
+                            <a href="#" class="nav-link" data-page="s3">
+                                <i class="fas fa-archive mr-2"></i>S3 Browser
+                            </a>
+                            <a href="#" class="nav-link" data-page="ec2">
+                                <i class="fas fa-server mr-2"></i>EC2 Instances
+                            </a>
+                            <a href="#" class="nav-link" data-page="logs">
+                                <i class="fas fa-file-alt mr-2"></i>CloudWatch Logs
+                            </a>
+                            <a href="#" class="nav-link" data-page="settings">
+                                <i class="fas fa-cog mr-2"></i>Settings
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <!-- Theme Toggle -->
+                    <button id="theme-toggle" class="p-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <i class="fas fa-moon dark:hidden"></i>
+                        <i class="fas fa-sun hidden dark:inline"></i>
+                    </button>
+                    
+                    <!-- Authentication Status -->
+                    <div id="auth-status" class="flex items-center space-x-2">
+                        <div class="auth-indicator auth-loading">
+                            <i class="fas fa-spinner fa-spin text-yellow-500"></i>
+                            <span class="text-sm text-gray-600 dark:text-gray-300">Loading...</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Refresh Button -->
+                    <button id="refresh-btn" class="p-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <i class="fas fa-refresh"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <!-- Dashboard Page -->
+        <div id="page-dashboard" class="page active">
+            <div class="mb-8">
+                <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+                <p class="text-gray-600 dark:text-gray-300 mt-2">AWS resources at a glance</p>
+            </div>
+
+            <!-- Authentication Card -->
+            <div id="auth-card" class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+                <div id="auth-configured" class="hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+                            <i class="fas fa-shield-alt text-green-500 mr-2"></i>
+                            Authentication Status
+                        </h2>
+                        <span class="auth-status-badge"></span>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="space-y-2">
+                            <div class="text-sm text-gray-500 dark:text-gray-400">Method</div>
+                            <div class="auth-method text-lg font-medium"></div>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="text-sm text-gray-500 dark:text-gray-400">Region</div>
+                            <div class="auth-region text-lg font-medium"></div>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="text-sm text-gray-500 dark:text-gray-400">Account</div>
+                            <div class="auth-account text-lg font-medium"></div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 flex space-x-3">
+                        <button id="test-auth-btn" class="btn btn-primary">
+                            <i class="fas fa-check mr-2"></i>Test Connection
+                        </button>
+                        <button id="refresh-auth-btn" class="btn btn-secondary">
+                            <i class="fas fa-refresh mr-2"></i>Refresh Credentials
+                        </button>
+                        <button id="clear-auth-btn" class="btn btn-danger">
+                            <i class="fas fa-trash mr-2"></i>Clear Configuration
+                        </button>
+                    </div>
+                </div>
+
+                <div id="auth-not-configured" class="text-center py-8">
+                    <i class="fas fa-exclamation-triangle text-yellow-500 text-4xl mb-4"></i>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                        AWS Authentication Not Configured
+                    </h3>
+                    <p class="text-gray-600 dark:text-gray-300 mb-6">
+                        Configure AWS authentication to access your AWS resources securely.
+                    </p>
+                    <button id="setup-auth-btn" class="btn btn-primary">
+                        <i class="fas fa-cog mr-2"></i>Setup Authentication
+                    </button>
+                </div>
+            </div>
+
+            <!-- Resource Cards -->
+            <div id="resource-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 hidden">
+                <!-- S3 Buckets Card -->
+                <div class="resource-card" data-type="s3">
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                                <i class="fas fa-archive text-orange-500 mr-2"></i>
+                                S3 Buckets
+                            </h3>
+                            <span class="resource-count bg-orange-100 text-orange-800 px-2 py-1 rounded-full text-sm">-</span>
+                        </div>
+                        <p class="text-gray-600 dark:text-gray-300">Manage your S3 buckets and objects</p>
+                        <div class="mt-4">
+                            <div class="text-2xl font-bold text-orange-600 resource-value">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- EC2 Instances Card -->
+                <div class="resource-card" data-type="ec2">
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                                <i class="fas fa-server text-blue-500 mr-2"></i>
+                                EC2 Instances
+                            </h3>
+                            <span class="resource-count bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">-</span>
+                        </div>
+                        <p class="text-gray-600 dark:text-gray-300">Monitor and manage EC2 instances</p>
+                        <div class="mt-4">
+                            <div class="text-2xl font-bold text-blue-600 resource-value">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CloudWatch Logs Card -->
+                <div class="resource-card" data-type="logs">
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                                <i class="fas fa-file-alt text-green-500 mr-2"></i>
+                                CloudWatch Logs
+                            </h3>
+                            <span class="resource-count bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm">-</span>
+                        </div>
+                        <p class="text-gray-600 dark:text-gray-300">View and search CloudWatch logs</p>
+                        <div class="mt-4">
+                            <div class="text-2xl font-bold text-green-600 resource-value">Coming Soon</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- S3 Browser Page -->
+        <div id="page-s3" class="page">
+            <div class="mb-8">
+                <h1 class="text-3xl font-bold text-gray-900 dark:text-white">S3 Browser</h1>
+                <p class="text-gray-600 dark:text-gray-300 mt-2">Browse and manage your S3 buckets</p>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md">
+                <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xl font-semibold">Your S3 Buckets</h2>
+                        <button id="refresh-s3-btn" class="btn btn-secondary">
+                            <i class="fas fa-refresh mr-2"></i>Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <div id="s3-buckets-list" class="p-6">
+                    <div class="loading-spinner text-center py-8">
+                        <i class="fas fa-spinner fa-spin text-3xl text-gray-400"></i>
+                        <p class="text-gray-500 mt-2">Loading buckets...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- EC2 Instances Page -->
+        <div id="page-ec2" class="page">
+            <div class="mb-8">
+                <h1 class="text-3xl font-bold text-gray-900 dark:text-white">EC2 Instances</h1>
+                <p class="text-gray-600 dark:text-gray-300 mt-2">Monitor and manage your EC2 instances</p>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md">
+                <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xl font-semibold">Your EC2 Instances</h2>
+                        <div class="flex space-x-2">
+                            <select id="ec2-region-filter" class="form-select">
+                                <option value="">All Regions</option>
+                                <option value="us-east-1">US East (N. Virginia)</option>
+                                <option value="us-west-2">US West (Oregon)</option>
+                                <option value="eu-west-1">Europe (Ireland)</option>
+                            </select>
+                            <button id="refresh-ec2-btn" class="btn btn-secondary">
+                                <i class="fas fa-refresh mr-2"></i>Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="ec2-instances-list" class="p-6">
+                    <div class="loading-spinner text-center py-8">
+                        <i class="fas fa-spinner fa-spin text-3xl text-gray-400"></i>
+                        <p class="text-gray-500 mt-2">Loading instances...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Page -->
+        <div id="page-settings" class="page">
+            <div class="mb-8">
+                <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
+                <p class="text-gray-600 dark:text-gray-300 mt-2">Configure your AWS Desktop App</p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Authentication Settings -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">
+                        <i class="fas fa-shield-alt text-green-500 mr-2"></i>
+                        Authentication
+                    </h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="form-label">Authentication Method</label>
+                            <select id="auth-method-select" class="form-select">
+                                <option value="">Select method...</option>
+                                <option value="sso">AWS SSO</option>
+                                <option value="profile">AWS Profile</option>
+                                <option value="interactive">Interactive</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="form-label">AWS Region</label>
+                            <select id="aws-region-select" class="form-select">
+                                <option value="us-east-1">US East (N. Virginia)</option>
+                                <option value="us-west-1">US West (N. California)</option>
+                                <option value="us-west-2">US West (Oregon)</option>
+                                <option value="eu-west-1">Europe (Ireland)</option>
+                                <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="form-label">Session Duration (minutes)</label>
+                            <select id="session-duration-select" class="form-select">
+                                <option value="3600">60 minutes</option>
+                                <option value="7200">120 minutes</option>
+                                <option value="14400">240 minutes</option>
+                                <option value="28800">480 minutes</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mt-6">
+                        <button id="save-auth-settings-btn" class="btn btn-primary">
+                            <i class="fas fa-save mr-2"></i>Save Settings
+                        </button>
+                    </div>
+                </div>
+
+                <!-- UI Settings -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">
+                        <i class="fas fa-palette text-purple-500 mr-2"></i>
+                        Appearance
+                    </h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="form-label">Theme</label>
+                            <select id="theme-select" class="form-select">
+                                <option value="auto">Auto (System)</option>
+                                <option value="light">Light</option>
+                                <option value="dark">Dark</option>
+                            </select>
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <label class="form-label mb-0">Compact Mode</label>
+                            <input type="checkbox" id="compact-mode-toggle" class="form-checkbox">
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <label class="form-label mb-0">Auto Refresh</label>
+                            <input type="checkbox" id="auto-refresh-toggle" class="form-checkbox">
+                        </div>
+                        
+                        <div class="flex items-center justify-between">
+                            <label class="form-label mb-0">Notifications</label>
+                            <input type="checkbox" id="notifications-toggle" class="form-checkbox">
+                        </div>
+                    </div>
+
+                    <div class="mt-6">
+                        <button id="save-ui-settings-btn" class="btn btn-primary">
+                            <i class="fas fa-save mr-2"></i>Save Settings
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Authentication Setup Modal -->
+    <div id="setup-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Setup AWS Authentication</h3>
+                <button class="modal-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="modal-body">
+                <form id="setup-form">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="form-label">Authentication Method</label>
+                            <select id="setup-method" class="form-select" required>
+                                <option value="">Choose authentication method...</option>
+                                <option value="sso">AWS SSO (Recommended)</option>
+                                <option value="profile">AWS Profile</option>
+                                <option value="interactive">Interactive Setup</option>
+                            </select>
+                        </div>
+
+                        <div id="sso-fields" class="hidden space-y-4">
+                            <div>
+                                <label class="form-label">SSO Start URL</label>
+                                <input type="url" id="sso-start-url" class="form-input" placeholder="https://my-sso.awsapps.com/start">
+                            </div>
+                        </div>
+
+                        <div id="profile-fields" class="hidden space-y-4">
+                            <div>
+                                <label class="form-label">Profile Name</label>
+                                <input type="text" id="profile-name" class="form-input" placeholder="default">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="form-label">AWS Region</label>
+                            <select id="setup-region" class="form-select">
+                                <option value="us-east-1">US East (N. Virginia)</option>
+                                <option value="us-west-1">US West (N. California)</option>
+                                <option value="us-west-2">US West (Oregon)</option>
+                                <option value="eu-west-1">Europe (Ireland)</option>
+                                <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
+                            </select>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+                <button type="submit" form="setup-form" class="btn btn-primary">
+                    <i class="fas fa-cog mr-2"></i>Setup Authentication
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

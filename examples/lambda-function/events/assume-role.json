@@ -1,0 +1,44 @@
+{
+  "httpMethod": "POST",
+  "path": "/",
+  "headers": {
+    "Content-Type": "application/json",
+    "User-Agent": "curl/7.64.1",
+    "Accept": "*/*"
+  },
+  "multiValueHeaders": {
+    "Content-Type": ["application/json"],
+    "User-Agent": ["curl/7.64.1"],
+    "Accept": ["*/*"]
+  },
+  "queryStringParameters": null,
+  "multiValueQueryStringParameters": null,
+  "pathParameters": null,
+  "stageVariables": null,
+  "requestContext": {
+    "resourceId": "123456",
+    "resourcePath": "/",
+    "httpMethod": "POST",
+    "requestId": "c6af9ac6-7b61-11e6-9a41-93e8deadbeef",
+    "protocol": "HTTP/1.1",
+    "accountId": "123456789012",
+    "stage": "dev",
+    "requestTime": "09/Apr/2015:12:34:56 +0000",
+    "requestTimeEpoch": 1428582896000,
+    "identity": {
+      "sourceIp": "127.0.0.1",
+      "userAgent": "curl/7.64.1",
+      "accessKey": null,
+      "caller": null,
+      "cognitoIdentityPoolId": null,
+      "accountId": null,
+      "cognitoIdentityId": null,
+      "cognitoAuthenticationProvider": null,
+      "cognitoAuthenticationType": null,
+      "userArn": null,
+      "user": null
+    }
+  },
+  "body": "{\"action\": \"assume_role\", \"target_role\": \"arn:aws:iam::123456789012:role/CrossAccountRole\", \"external_id\": \"test-external-id\"}",
+  "isBase64Encoded": false
+}

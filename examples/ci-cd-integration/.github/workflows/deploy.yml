@@ -1,0 +1,345 @@
+name: Deploy AWS Remote Access Patterns
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  APPLICATION_NAME: remote-access-patterns
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Run tests
+        run: |
+          go mod download
+          go test ./...
+
+      - name: Run linting
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run security scan
+        uses: securecodewarrior/github-action-add-sarif@v1
+        with:
+          sarif-file: 'security-scan-results.sarif'
+
+      - name: Run dependency check
+        uses: actions/dependency-review-action@v3
+
+  build:
+    needs: [test, security-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Build applications
+        run: |
+          # Build all example applications
+          cd examples/simple-saas && GOOS=linux GOARCH=amd64 go build -o main .
+          cd ../simple-cli && GOOS=linux GOARCH=amd64 go build -o main .
+          cd ../lambda-function && GOOS=linux GOARCH=amd64 go build -o main .
+          cd ../desktop-app && GOOS=linux GOARCH=amd64 go build -o main .
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            examples/*/main
+            examples/*/template.yaml
+
+  deploy-dev:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: development
+    if: github.ref == 'refs/heads/develop' || github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+
+      - name: Configure AWS credentials (Dev)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.DEV_AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          role-session-name: GitHubActions-${{ github.repository }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: Verify AWS identity
+        run: |
+          aws sts get-caller-identity
+          echo "Deploying to development environment"
+
+      - name: Deploy infrastructure
+        run: |
+          # Deploy core infrastructure
+          cd terraform/
+          terraform init -backend-config="key=dev/terraform.tfstate"
+          terraform plan -var="environment=dev" -var="github_repository=${{ github.repository }}"
+          terraform apply -auto-approve -var="environment=dev" -var="github_repository=${{ github.repository }}"
+
+      - name: Deploy Lambda function
+        run: |
+          cd examples/lambda-function/
+          sam build
+          sam deploy \
+            --stack-name ${{ env.APPLICATION_NAME }}-lambda-dev \
+            --parameter-overrides Environment=dev \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.AWS_REGION }} \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy SaaS application
+        run: |
+          cd examples/simple-saas/
+          if [ -f template.yaml ]; then
+            sam build
+            sam deploy \
+              --stack-name ${{ env.APPLICATION_NAME }}-saas-dev \
+              --parameter-overrides Environment=dev \
+              --capabilities CAPABILITY_IAM \
+              --region ${{ env.AWS_REGION }} \
+              --no-confirm-changeset \
+              --no-fail-on-empty-changeset
+          fi
+
+      - name: Run integration tests
+        run: |
+          # Run integration tests against dev environment
+          go test -tags=integration ./tests/integration/...
+
+      - name: Comment PR with dev deployment info
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 Successfully deployed to development environment!\n\n' +
+                    'Lambda API: https://api-dev.example.com\n' +
+                    'SaaS App: https://app-dev.example.com\n' +
+                    'Dashboard: https://dashboard-dev.example.com'
+            })
+
+  deploy-staging:
+    needs: [build, deploy-dev]
+    runs-on: ubuntu-latest
+    environment: staging
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+
+      - name: Configure AWS credentials (Staging)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.STAGING_AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          role-session-name: GitHubActions-${{ github.repository }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment"
+          aws sts get-caller-identity
+          
+          # Deploy infrastructure
+          cd terraform/
+          terraform init -backend-config="key=staging/terraform.tfstate"
+          terraform plan -var="environment=staging" -var="github_repository=${{ github.repository }}"
+          terraform apply -auto-approve -var="environment=staging" -var="github_repository=${{ github.repository }}"
+
+      - name: Deploy applications (Staging)
+        run: |
+          # Lambda function
+          cd examples/lambda-function/
+          sam deploy \
+            --stack-name ${{ env.APPLICATION_NAME }}-lambda-staging \
+            --parameter-overrides Environment=staging \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.AWS_REGION }} \
+            --no-confirm-changeset
+          
+          # SaaS application
+          cd ../simple-saas/
+          if [ -f template.yaml ]; then
+            sam deploy \
+              --stack-name ${{ env.APPLICATION_NAME }}-saas-staging \
+              --parameter-overrides Environment=staging \
+              --capabilities CAPABILITY_IAM \
+              --region ${{ env.AWS_REGION }} \
+              --no-confirm-changeset
+          fi
+
+      - name: Run smoke tests (Staging)
+        run: |
+          # Run smoke tests against staging
+          go test -tags=staging ./tests/smoke/...
+
+      - name: Performance tests
+        run: |
+          # Run performance tests
+          echo "Running performance tests against staging environment"
+          # Add your performance testing commands here
+
+  deploy-production:
+    needs: [build, deploy-staging]
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+
+      - name: Configure AWS credentials (Production)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.PRODUCTION_AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          role-session-name: GitHubActions-${{ github.repository }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: Pre-deployment checks
+        run: |
+          echo "Running pre-deployment checks for production"
+          aws sts get-caller-identity
+          
+          # Verify staging deployment
+          # Add health checks for staging environment
+          
+          # Check for breaking changes
+          # Add your pre-deployment validation here
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production environment"
+          
+          # Deploy infrastructure with blue/green or canary strategy
+          cd terraform/
+          terraform init -backend-config="key=production/terraform.tfstate"
+          terraform plan -var="environment=production" -var="github_repository=${{ github.repository }}"
+          terraform apply -auto-approve -var="environment=production" -var="github_repository=${{ github.repository }}"
+
+      - name: Deploy applications (Production)
+        run: |
+          # Lambda function with alias and weighted routing
+          cd examples/lambda-function/
+          sam deploy \
+            --stack-name ${{ env.APPLICATION_NAME }}-lambda-production \
+            --parameter-overrides Environment=production \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.AWS_REGION }} \
+            --no-confirm-changeset
+          
+          # Update Lambda alias for gradual rollout
+          aws lambda update-alias \
+            --function-name ${{ env.APPLICATION_NAME }}-lambda-production \
+            --name LIVE \
+            --routing-config AdditionalVersionWeights={2=0.1}
+
+      - name: Post-deployment verification
+        run: |
+          echo "Running post-deployment verification"
+          
+          # Health checks
+          # Smoke tests  
+          # Performance monitoring
+          go test -tags=production ./tests/verification/...
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed, initiating rollback"
+          
+          # Rollback Lambda to previous version
+          aws lambda update-alias \
+            --function-name ${{ env.APPLICATION_NAME }}-lambda-production \
+            --name LIVE \
+            --function-version 1 \
+            --routing-config '{}'
+          
+          # Rollback infrastructure if needed
+          # Add your rollback procedures here
+
+      - name: Complete deployment
+        run: |
+          echo "Production deployment completed successfully"
+          
+          # Update Lambda alias to full traffic
+          aws lambda update-alias \
+            --function-name ${{ env.APPLICATION_NAME }}-lambda-production \
+            --name LIVE \
+            --function-version 2 \
+            --routing-config '{}'
+          
+          # Send deployment notification
+          echo "🎉 Production deployment completed!"
+
+  cleanup:
+    needs: [deploy-dev, deploy-staging, deploy-production]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Clean up artifacts
+        uses: geekyeggo/delete-artifact@v2
+        with:
+          name: build-artifacts
+
+      - name: Send deployment notification
+        if: success()
+        run: |
+          echo "All deployments completed successfully!"
+          # Add notification logic (Slack, email, etc.)
+
+      - name: Send failure notification  
+        if: failure()
+        run: |
+          echo "Deployment pipeline failed!"
+          # Add failure notification logic

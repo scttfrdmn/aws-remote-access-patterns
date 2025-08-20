@@ -3,6 +3,7 @@ package crossaccount
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net/url"
@@ -100,12 +101,13 @@ func (c *Client) CompleteSetup(ctx context.Context, req *SetupCompleteRequest) e
 	}
 
 	// Store the credentials securely
-	creds := CustomerCredentials{
-		CustomerID:  req.CustomerID,
+	creds := &StoredCredentials{
 		RoleARN:     req.RoleARN,
 		ExternalID:  req.ExternalID,
-		SetupPhase:  true, // Initially includes setup permissions
+		SessionName: fmt.Sprintf("%s-%s", c.config.ServiceName, req.CustomerID),
 		CreatedAt:   time.Now(),
+		LastUsed:    time.Now(),
+		Expiration:  time.Now().Add(24 * time.Hour), // Set expiration
 	}
 
 	if err := c.storage.Store(ctx, req.CustomerID, creds); err != nil {
@@ -123,7 +125,7 @@ func (c *Client) AssumeRole(ctx context.Context, customerID string) (aws.Config,
 	}
 
 	// Get stored credentials
-	creds, err := c.storage.Get(ctx, customerID)
+	creds, err := c.storage.Retrieve(ctx, customerID)
 	if err != nil {
 		return aws.Config{}, fmt.Errorf("customer not found: %w", err)
 	}
@@ -166,14 +168,14 @@ func (c *Client) RemoveSetupPermissions(customerID string) (*CleanupInstructions
 		return nil, fmt.Errorf("customer ID is required")
 	}
 
-	creds, err := c.storage.Get(context.Background(), customerID)
+	creds, err := c.storage.Retrieve(context.Background(), customerID)
 	if err != nil {
 		return nil, fmt.Errorf("customer not found: %w", err)
 	}
 
-	// Mark as no longer in setup phase
-	creds.SetupPhase = false
-	if err := c.storage.Store(context.Background(), customerID, *creds); err != nil {
+	// Update credentials to mark setup phase as complete
+	creds.LastUsed = time.Now()
+	if err := c.storage.Store(context.Background(), customerID, creds); err != nil {
 		return nil, fmt.Errorf("failed to update credentials: %w", err)
 	}
 
@@ -213,14 +215,49 @@ func (c *Client) validateRoleAccess(ctx context.Context, roleARN, externalID str
 
 // generateSecureExternalID creates a cryptographically secure external ID
 func (c *Client) generateSecureExternalID(customerID string) string {
-	// Use crypto/rand for security
-	randomBytes := make([]byte, 16)
+	// Use crypto/rand for security - 32 bytes for extra entropy
+	randomBytes := make([]byte, 32)
 	if _, err := rand.Read(randomBytes); err != nil {
-		// Fallback to timestamp-based ID if crypto fails
-		return fmt.Sprintf("%s-%s-%d", c.config.ServiceName, customerID, time.Now().Unix())
+		// If crypto/rand fails, this is a critical security issue
+		// Do not fallback to predictable timestamp-based IDs
+		panic(fmt.Sprintf("Critical security error: unable to generate secure random bytes: %v", err))
 	}
 	
-	return fmt.Sprintf("%s-%s-%s", c.config.ServiceName, customerID, hex.EncodeToString(randomBytes))
+	// Create a secure external ID with hex encoding
+	hexString := hex.EncodeToString(randomBytes)
+	
+	// Include customer ID hash for traceability without exposing customer info
+	hasher := sha256.New()
+	hasher.Write([]byte(customerID))
+	customerHash := hex.EncodeToString(hasher.Sum(nil)[:8]) // First 8 bytes of SHA256
+	
+	return fmt.Sprintf("%s-%s-%s", c.config.ServiceName, customerHash, hexString)
+}
+
+// GenerateExternalID creates a cryptographically secure external ID for cross-account access
+func GenerateExternalID(customerID string) string {
+	// Use crypto/rand for security - 32 bytes for extra entropy
+	randomBytes := make([]byte, 32)
+	if _, err := rand.Read(randomBytes); err != nil {
+		// If crypto/rand fails, this is a critical security issue
+		// Do not fallback to predictable timestamp-based IDs
+		panic(fmt.Sprintf("Critical security error: unable to generate secure random bytes: %v", err))
+	}
+	
+	// Create a secure external ID with hex encoding
+	hexString := hex.EncodeToString(randomBytes)
+	
+	if customerID == "" {
+		// If no customer ID provided, just use random hex
+		return hexString
+	}
+	
+	// Include customer ID hash for traceability without exposing customer info
+	hasher := sha256.New()
+	hasher.Write([]byte(customerID))
+	customerHash := hex.EncodeToString(hasher.Sum(nil)[:8]) // First 8 bytes of SHA256
+	
+	return fmt.Sprintf("%s-%s", customerHash, hexString)
 }
 
 // generateCleanupScript creates an AWS CLI script for removing setup permissions

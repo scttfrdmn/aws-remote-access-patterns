@@ -200,6 +200,5 @@ Why This Matters:
 ⚡ Easy to revoke access when needed
 
 This is why modern tools like AWS CLI v2, Docker, and Terraform 
-are moving away from access keys toward temporary credentials.
-`)
+are moving away from access keys toward temporary credentials.`)
 }

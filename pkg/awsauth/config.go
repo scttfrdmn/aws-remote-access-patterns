@@ -50,16 +50,27 @@ func (c *Config) Validate() error {
 	if c.ToolName == "" {
 		return errors.New("tool_name is required")
 	}
+	if c.ToolVersion == "" {
+		return errors.New("tool_version is required")
+	}
 
 	// Set defaults
 	if c.DefaultRegion == "" {
 		c.DefaultRegion = "us-east-1"
 	}
 	if c.SessionDuration == 0 {
-		c.SessionDuration = 12 * time.Hour
+		c.SessionDuration = time.Hour // Default to 1 hour for security
 	}
 	if c.RequiredActions == nil {
 		c.RequiredActions = []string{"sts:GetCallerIdentity"}
+	}
+
+	// Validate session duration
+	if c.SessionDuration < 15*time.Minute {
+		return errors.New("session_duration must be at least 15 minutes")
+	}
+	if c.SessionDuration > 12*time.Hour {
+		return errors.New("session_duration cannot exceed 12 hours")
 	}
 
 	// Enable reasonable defaults if nothing specified
@@ -77,7 +88,7 @@ func DefaultConfig(toolName string) *Config {
 	return &Config{
 		ToolName:        toolName,
 		DefaultRegion:   "us-east-1",
-		SessionDuration: 12 * time.Hour,
+		SessionDuration: time.Hour, // Default to 1 hour for security
 		RequiredActions: []string{
 			"sts:GetCallerIdentity",
 		},

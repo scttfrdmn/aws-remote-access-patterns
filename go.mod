@@ -11,6 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.21.5
 	github.com/aws/aws-sdk-go-v2/service/sts v1.26.5
 	github.com/gin-gonic/gin v1.9.1
+	golang.org/x/crypto v0.9.0
 )
 
 require (
@@ -45,7 +46,6 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	golang.org/x/arch v0.3.0 // indirect
-	golang.org/x/crypto v0.9.0 // indirect
 	golang.org/x/net v0.10.0 // indirect
 	golang.org/x/sys v0.8.0 // indirect
 	golang.org/x/text v0.9.0 // indirect
